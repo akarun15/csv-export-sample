@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const store = require('./store');
 const { version } = require('../package.json');
+const { toCsv } = require('./export');
 
 const app = express();
 app.use(express.json());
@@ -65,6 +66,24 @@ app.post('/expenses', (req, res) => {
     note: typeof body.note === 'string' ? body.note : '',
   });
   res.status(201).json(row);
+});
+
+// GET /expenses/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD  (both required, range inclusive)
+app.get('/expenses/export.csv', (req, res) => {
+  const { from, to } = req.query;
+  if (!isValidDate(from)) return res.status(400).json({ error: 'from must be YYYY-MM-DD' });
+  if (!isValidDate(to)) return res.status(400).json({ error: 'to must be YYYY-MM-DD' });
+  if (from > to) return res.status(400).json({ error: 'from must not be after to' });
+
+  // ISO dates compare correctly as plain strings, so no Date objects (and no timezone shifts).
+  const rows = store
+    .readAll()
+    .filter((r) => r.date >= from && r.date <= to)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="expenses-${from}-${to}.csv"`);
+  res.send(toCsv(rows));
 });
 
 // --- routes end ---
